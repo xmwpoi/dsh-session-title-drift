@@ -1,0 +1,15 @@
+# 冻结字节保护
+#
+# lib/index.js 与 lib/drift-gate.mjs 是逐字节冻结的发布件，其 SHA256 已登记在
+# 发布记录中。在 core.autocrlf=true 的机器上 checkout 时，Git 默认会把索引中的
+# LF 改写成工作区的 CRLF，从而改变文件字节、使校验失败。
+#
+# 下面的规则让这两个文件在任何平台上都以 LF 检出，字节与登记值一致：
+lib/index.js       text eol=lf
+lib/drift-gate.mjs text eol=lf
+
+# 本文件自身也以 LF 检出，避免任何平台差异：
+.gitattributes text eol=lf
+
+# 其余文本文件按 Git 常规自动识别处理（仓库内规范化为 LF）：
+* text=auto
