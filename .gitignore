@@ -1,0 +1,13 @@
+# 依赖
+node_modules/
+
+# 日志与临时产物
+*.log
+*.err.log
+npm-debug.log*
+
+# 编辑器/系统
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

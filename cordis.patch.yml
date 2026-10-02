@@ -1,0 +1,54 @@
+# dsh-session-title-drift 的 bundle patch：把自己的插件行 insert 进 roster。
+#
+# 单 provider 槽位约束：启用本插件前必须先禁用内置 provider（在 profile 的
+# cordis.patch.yml 里给 id: session-title-llm 加 disabled: true），否则本插件
+# register() 会因 "already registered" 抛错导致加载失败（见 lib/index.js 的
+# register 错误处理）。
+#
+# 使用者须自行填写的字段（本公共版不含任何机器路径或模型取值）：
+# - cliNodeModules：仅当宿主以相对路径 argv[1] 启动、且裸 specifier 与入口
+#   锚点都解析不到 @deepseek-ai/dsh-session-title-llm 时才需要；填宿主安装树
+#   的 node_modules 绝对路径（正斜杠），例如 '<宿主安装目录>/node_modules'。
+#   常规启动方式留空即可。
+# - llmProvider / llmModel：必须成对配置才生效；留空 = 继承会话主请求路由。
+#   注意：全新首问会话在自动首标题时机尚无可继承路由，若路由解析不可用，
+#   LLM 改写会 fail-open 回退到本地规则（不会让标题生成失败）。是否需要
+#   成对指定取决于宿主的路由配置，本插件未实测所有布局。
+- insert:
+    - id: session-title-drift
+      name: 'dsh-session-title-drift'
+      # config 块全部为 schema 默认值的显式声明（与 lib/index.js 的 Config 保持
+      # 同步，双保险）。P0c 修复（2026-09-27）后 Config 任何字段不得链
+      # .volatile()：fork schemastery 会把 volatile 值包成不透明容器，cordis
+      # resolveConfig 下发后 apply() 收到全 {} config。
+      config:
+        enabled: true
+        delegatedTitles: true
+        cooldownMs: 120000
+        localTitleMaxCjk: 10
+        localTitleMaxWords: 5
+        maxTitleBytes: 80
+        minFirstPromptChars: 4
+        # M3：LLM 改写。cliNodeModules / llmProvider / llmModel 留空（见文件头
+        # 说明）；如需显式路由，成对填写：
+        #   llmProvider: '<your-provider>'
+        #   llmModel: '<your-model>'
+        mode: hybrid
+        # 已废弃字段 driftCheckEvery 不再下发（运行路径不读取）。
+        # M4：漂移门阈值组（p3-2 报告 §5 推荐值；显式传参，禁用模块默认
+        # olderMin=2/frac=0.06/maxHits=3 的不安全组合）。与 lib/index.js 的
+        # Config drift* 字段保持同步。
+        driftEnabled: true
+        driftCooldownMessages: 4
+        driftWindowSize: 6
+        driftMinMessages: 4
+        driftTailCount: 3
+        driftOlderMin: 3
+        driftANewTol: 1
+        driftAnchorFrac: 0.08
+        driftMaxHits: 2
+        driftWCjk: 0.7
+        driftWLatin: 0.3
+        driftTrigger: 0.25
+        driftMinMsgChars: 12
+        driftMaxCharsPerMsg: 1200
