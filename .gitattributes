@@ -7,6 +7,7 @@
 # 下面的规则让这两个文件在任何平台上都以 LF 检出，字节与登记值一致：
 lib/index.js       text eol=lf
 lib/drift-gate.mjs text eol=lf
+lib/semantic-drift.mjs text eol=lf
 
 # 本文件自身也以 LF 检出，避免任何平台差异：
 .gitattributes text eol=lf

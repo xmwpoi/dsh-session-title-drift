@@ -1,7 +1,6 @@
 # dsh-session-title-drift
 
-**预发布 `0.1.1-rc.1`：供试用与审核，非正式最新版。原 S4 样本仍有漂移漏检，
-完整十条防抖序列尚未验收；不能宣称六案全通过。** 详见 [TESTING.md](TESTING.md)。
+**预发布 `0.1.1-rc.2`：供试用与审核，非正式最新版。** 本版增加主题漂移的模型语义确认，已完成两组完整 S4 样本及补充对照。其他五案未在本版重新进行 GUI 验收，不能宣称六案全通过。详见 [TESTING.md](TESTING.md) 和 [RELEASE-NOTES.md](RELEASE-NOTES.md)。
 
 DSH（DeepSeek Harness，Cordis 宿主）的 host 侧会话标题插件。它注册一个自定义标题
 provider 并附带 watcher，补上内置标题服务的三个缺口：
@@ -10,16 +9,16 @@ provider 并附带 watcher，补上内置标题服务的三个缺口：
 |---|---|---|
 | G1 | 委派（subagent）会话没有标题 | watcher 主动补一次标题（`delegatedTitles` 开关，默认开） |
 | G2 | 长首问超出输入预算时标题生成静默失败，只剩机械截取 | 本地规则 provider 接管；`mode: 'hybrid'`（默认）下对被机械截取的长首问调官方共享标题 LLM 做语义改写 |
-| G3 | 会话主题漂移后标题不更新 | 漂移门（`lib/drift-gate.mjs`）按滚动窗口评估，命中才改写；多层限频（条数冷却 + 次数硬顶 + 时间冷却） |
+| G3 | 会话主题漂移后标题不更新 | 完整标题的词面门筛候选，再通过模型语义确认；同项目子问题保持原题，确认换题才改写；共用互斥、冷却和尝试预算 |
 
 本地首标题零 API 调用；`hybrid` 模式仅在「首问被机械截取」或「漂移命中」时各可能发
-一次 LLM 请求（每次 `generate()` 至多一次），LLM 不可用时一律 fail-open 回退本地规则。
+一次 LLM 请求（每次 `generate()` 至多一次），初标题 LLM 不可用时回退本地规则；漂移确认失败、超时或非法输出时保留原题。
 
 ## 版本与验证状态
 
 - **目标宿主版本：DSH `0.1.7-rc.2`。** 本插件的源码、离线依据与宿主 API 事实均
   按该版本核实。
-- 当前版本为 **`0.1.1-rc.1` 预发布版**。验证范围、行为结果和剩余限制见
+- 当前版本为 **`0.1.1-rc.2` 预发布版**。验证范围、行为结果和剩余限制见
   [TESTING.md](TESTING.md)；预发布不代表已获用户批准转为正式最新版。
 - 0.2.0-rc.*、Node 22 和全新机器环境未经验证，不要假定兼容。
 
@@ -161,8 +160,8 @@ because it is read-only or constant`。上表刻意避开了所有 PowerShell �
 | `driftEnabled` | 漂移门开关（仅 `hybrid` 下评估） | `true` |
 | `llmProvider` / `llmModel` | 显式 LLM 路由，**必须成对配置**才生效；留空 = 继承会话主请求路由 | 空 |
 | `cliNodeModules` | 共享标题 LLM 解析锚点的显式覆盖；仅非常规启动方式（相对路径 argv[1]）下可能需要 | 空 |
-| `llmMaxInputBytes` | 送给 LLM 的输入字节预算（`selectWindow` 按此裁剪） | `32768` |
-| `maxLlmUpdatesPerSession` | 每会话 LLM 改写次数硬顶 | `3` |
+| `llmMaxInputBytes` | 送给 LLM 的输入字节预算；漂移背景与近期正文在此预算内裁剪 | `32768` |
+| `maxLlmUpdatesPerSession` | 每会话 LLM 尝试上限，包含确认否决与失败，不是成功改题次数 | `3` |
 | `cooldownMs` | 同一会话两次主动 `refresh()` 的最小时间间隔 | `120000` |
 | `driftCooldownMessages` | 漂移命中后的条数级冷却 | `4` |
 | `driftTrigger` | 漂移评分触发阈值 | `0.25` |
@@ -179,45 +178,20 @@ because it is read-only or constant`。上表刻意避开了所有 PowerShell �
 
 ## 开发与测试
 
+安装第 2 步的普通依赖后：
+
 ```bash
-node --check lib/index.js        # 语法检查
+node --check lib/index.js
 node --check lib/drift-gate.mjs
-npm test                         # 离线冒烟测试（无网络、零依赖可跑）
+node --check lib/semantic-drift.mjs
+npm test
 ```
 
-`npm test`（`test/smoke.mjs`）只使用 Node 标准库与合成数据，不读任何真实会话/profile，
-不写任何探针输出文件。覆盖：
+默认测试包含 smoke 和严格语义协议解析。未设置宿主解析锚点时，9 组宿主入口集成明确 SKIP，不算通过；安装依赖后默认 smoke 为 48 项、解析为 8 项。若普通依赖也未安装，semantic 测试的静态 import 会失败，不能将裸 clone 视为可测试安装。
 
-- 漂移门核心 `evaluateDrift`：按当前集成阈值（`driftOlderMin=3`、
-  `driftAnchorFrac=0.08`、`driftMaxHits=2` 等）断言漂移命中、同主题不命中、消息
-  不足 gated、tokenize/normalizeMessages 基础行为。
-- 本地标题规则（`__internals` / `__internalsM3`）：前缀剥离、句末截断、CJK/词数/
-  字节三上限、`pickSeqs` 退化、M3 字节预算增量口径与 `selectWindow`。
-- schema 回归（复用 p0d 公开断言思路）：`validate({})` 产出默认值、显式 config
-  透传、volatile 容器哨兵、越界值拒绝——此组依赖 `@deepseek-ai/schemastery`，
-  未安装依赖时自动跳过（测试仍 exit 0 并明确标注 skipped 数），安装依赖后重跑即
-  全覆盖。
+真实宿主 SDK 的合成流集成测试需将环境变量 `DSH_TEST_CLI_NODE_MODULES` 设置为已安装 DSH 的 node_modules 绝对路径，再执行 `npm test`。测试仅替换模型流，覆盖否决、真换题、共享预算与冷却、并发互斥、非法输出、用户/seeded/委派边界及超预算输入。合成验证不等于真实模型准确率。
 
-### 计数口径（四套数字不要混用）
-
-| 口径 | 断言数 | 运行条件 | 证据状态 |
-|---|---|---|---|
-| 历史离线门 p0d（schema 回放） | **56 / 56** | 需 `@deepseek-ai/schemastery`；`DRIFT_LIB` 指向冻结源码 | 独立实跑，exit 0 |
-| 历史离线门 m1（本地规则单测） | **13 / 13** | 需 `@deepseek-ai/schemastery` | 独立实跑，exit 0 |
-| 本仓库 `npm test`（无依赖） | **20 pass / 0 fail / 1 skipped** | 无网络、无依赖 | 实跑，exit 0 |
-| 本仓库 `npm test`（依赖可解析） | **48 pass / 0 fail / 0 skipped** | 需 `@deepseek-ai/schemastery` | 实跑，exit 0 |
-
-**skip 不等于通过。** 无依赖时 `npm test` 只执行漂移门 20 条；B/C 两组共 28 条断言因
-`@deepseek-ai/schemastery` 缺失被整体跳过（计为 `1 skipped`，表示一个被跳过的组，
-不是 1 条断言）。**48 条才是当前 smoke 的完整断言集，20 条不是**；看到 `1 skipped` 时
-不能把结果读成全通过。
-
-**56/48/13 是三套不同的断言集，不可互相替代**：56/56 与 13/13 是开发期探针脚本
-（`m1_unit_test.mjs`、`p0d-schema-regression.mjs`）的历史离线门，本仓库 smoke 的
-48 条复用公开断言子集并新增 10 条漂移输入回归。历史记录中出现的 `11/11` 是 **M3 之前的旧期望
-值，已失效**，不要再引用。
-
-真实会话回放、宿主内加载、GUI 行为不在默认测试范围内。
+历史开发探针 p0d 的 56/56、m1 的 13/13，与 smoke 48 项、解析 8 项和集成 9 组是不同断言集；不可相互替代。11/11 是已失效的旧计数。真实 GUI S4 结果见 TESTING.md。
 
 ## 已知限制（如实披露）
 
@@ -225,10 +199,8 @@ npm test                         # 离线冒烟测试（无网络、零依赖可
   段），合成数据误报 2 例。阈值组是回放扫描的折中选值，不是零漏检/零误报的保证。
 - **行为验证的适用范围**：见 TESTING.md 的当前 revision 实测结果。
   离线测试通过（`npm test`）不等于宿主行为已验收。
-- **漂移输入选择**：仅将检测尾窗末尾的新主题片段送入改写，先扣除容许回声的位置，
-  再排除末尾旧标题锚定消息；不会把全部历史再次送入漂移改写。关键词是近似判据，
-  不能保证每次模型输出都只表达新主题；没有合法输入片段时保留原标题。
-- **源码注释保留内部设计标签**：`lib/` 两个文件为冻结发布件（逐字节校验），其注释
+- **漂移输入与语义确认**：earlierMessages 提供项目背景、recentMessages 提供当前候选主题；生成的新标题只归因近期消息。严格协议要求显式确认换题，非法/超时/非正常结束均保留原题。词面候选仍有措辞敏感性，模型判断仍可能出错，不能保证零漏检或零误报。
+- **源码注释保留内部设计标签**：`lib/` 三个运行模块为已验证发布件（逐字节校验），其注释
   中保留了开发期的内部条目代号（如 `p3-2`、`P0c`、`p2-1`、`p2-2`）及一处内部报告
   路径名。这些是历史注释文本，不含凭据、会话内容或机器路径；如需清理须改动冻结
   文件，不在本版本范围内。
@@ -240,7 +212,7 @@ npm test                         # 离线冒烟测试（无网络、零依赖可
   消费（见「版本门」一节），**不要**用它推断兼容性。
 - **纯图片首问**：无文字内容的会话无法产出本地标题（本地规则基于文本），维持服
   务回退标题。
-- **钉住语义**：被用户显式重命名/钉住的标题（`source.kind === 'user'`）永不覆盖；
+- **钉住语义**：普通自动更新路径中，被用户显式重命名/钉住的标题（`source.kind === 'user'`）不会覆盖；官方 refresh 存在显式解钉路径，不能表述为永久不可逆；
   seeded fork 不插手；宿主可为继承标题添加 `(1)` 等编号，这不是插件改写。
 - **状态不持久化**：每会话状态（窗口/计数/冷却）为进程内存态，实例重启即清零。
   已产出标题是持久化日志事件，不受影响。
@@ -251,5 +223,5 @@ npm test                         # 离线冒烟测试（无网络、零依赖可
 MIT（见 [LICENSE](LICENSE)）。Copyright (c) 2026
 [xmwpoi](https://github.com/xmwpoi/dsh-session-title-drift)。
 
-`package.json` 保留 `"private": true`：本仓库首版不发布 npm，仅作源码分发，该字
+`package.json` 保留 `"private": true`：本仓库通过 GitHub 分发源码，不发布 npm，仅作源码分发，该字
 段不影响 GitHub 上传。
