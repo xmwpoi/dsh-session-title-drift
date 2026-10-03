@@ -1,6 +1,6 @@
 # dsh-session-title-drift
 
-**预发布 `0.1.1-rc.2`：供试用与审核，非正式最新版。** 本版增加主题漂移的模型语义确认，已完成两组完整 S4 样本及补充对照。其他五案未在本版重新进行 GUI 验收，不能宣称六案全通过。详见 [TESTING.md](TESTING.md) 和 [RELEASE-NOTES.md](RELEASE-NOTES.md)。
+**当前最新版：`0.1.1-rc.2`（GitHub Latest）。** 本版增加主题漂移的模型语义确认，已完成两组完整 S4 样本及补充对照。其他五案未在本版重新进行 GUI 验收，不能宣称六案全通过。详见 [TESTING.md](TESTING.md) 和 [RELEASE-NOTES.md](RELEASE-NOTES.md)。
 
 DSH（DeepSeek Harness，Cordis 宿主）的 host 侧会话标题插件。它注册一个自定义标题
 provider 并附带 watcher，补上内置标题服务的三个缺口：
@@ -18,8 +18,8 @@ provider 并附带 watcher，补上内置标题服务的三个缺口：
 
 - **目标宿主版本：DSH `0.1.7-rc.2`。** 本插件的源码、离线依据与宿主 API 事实均
   按该版本核实。
-- 当前版本为 **`0.1.1-rc.2` 预发布版**。验证范围、行为结果和剩余限制见
-  [TESTING.md](TESTING.md)；预发布不代表已获用户批准转为正式最新版。
+- 当前版本为 **`0.1.1-rc.2`，已按用户确认设为 GitHub Latest**。验证范围、行为结果和剩余限制见
+  [TESTING.md](TESTING.md)。Latest 标记不代表新增测试或所有场景均已验证。
 - 0.2.0-rc.*、Node 22 和全新机器环境未经验证，不要假定兼容。
 
 ## 环境要求
